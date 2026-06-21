@@ -123,7 +123,7 @@ async function runBenchmark(cold) {
     table.style.display = '';
 
     const speedup = (plain.lookupMs / jsonPlus.lookupMs).toFixed(1);
-    statusEl.textContent = `${count.toLocaleString()} records, ${lookups} lookups. JSON Plus cache ${
+    statusEl.textContent = `${count.toLocaleString()} records, ${lookups} operations. JSON Plus cache ${
       jsonPlus.cached ? 'hit' : 'rebuilt (' + jsonPlus.buildMs.toFixed(1) + 'ms)'
     }. JSON Plus is ${speedup}x faster than plain JSON parsing.`;
   } catch (err) {
