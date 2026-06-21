@@ -204,11 +204,23 @@ export function deleteFlatRow(db, meta, id) {
   if (idx === undefined) return false;
 
   const mainDbi = getTable(db, meta.table);
+  const otherFields = meta.indexFields.filter((f) => f !== 'id');
+
+  // The "id" index entry can be removed with the `id` already in hand, with
+  // no need to fetch the row. Other indexed fields need their value, which
+  // only the row itself has, so a row fetch is unavoidable when any exist.
+  if (otherFields.length === 0) {
+    mainDbi.removeSync(idx);
+    idDbi.removeSync(id);
+    return true;
+  }
+
   const existing = mainDbi.get(idx);
   if (!existing) return false;
 
   mainDbi.removeSync(idx);
-  for (const field of meta.indexFields) {
+  idDbi.removeSync(id);
+  for (const field of otherFields) {
     if (field in existing) {
       const fieldDbi = getIndexTable(db, meta.table, field);
       removeIndexEntry(fieldDbi, field, existing[field], idx);
