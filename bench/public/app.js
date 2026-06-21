@@ -11,33 +11,37 @@ function row(label, plainMs, rawSqliteMs, jsonPlusMs, maxMs) {
   const labelTd = document.createElement('td');
   labelTd.textContent = label;
 
-  const plainTd = document.createElement('td');
-  plainTd.textContent = plainMs.toFixed(2);
+  const results = [
+    { name: 'Plain JSON', ms: plainMs, isPlain: true },
+    { name: 'SQLite', ms: rawSqliteMs, isPlain: false },
+    { name: 'JSON Plus', ms: jsonPlusMs, isPlain: false }
+  ];
+  results.sort((a, b) => a.ms - b.ms);
 
-  const rawSqliteTd = document.createElement('td');
-  rawSqliteTd.textContent = rawSqliteMs.toFixed(2);
-  if (rawSqliteMs < plainMs && rawSqliteMs < jsonPlusMs) rawSqliteTd.classList.add('winner');
+  const cells = [labelTd];
+  const bars = [];
 
-  const jpTd = document.createElement('td');
-  jpTd.textContent = jsonPlusMs.toFixed(2);
-  if (jsonPlusMs < plainMs && jsonPlusMs < rawSqliteMs) jpTd.classList.add('winner');
+  for (const result of results) {
+    const td = document.createElement('td');
+    td.textContent = result.ms.toFixed(2);
+    if (result.ms === Math.min(plainMs, rawSqliteMs, jsonPlusMs)) {
+      td.classList.add('winner');
+    }
+    cells.push(td);
+
+    const bar = document.createElement('div');
+    bar.className = result.isPlain ? 'bar plain' : 'bar';
+    bar.style.width = `${(result.ms / maxMs) * 100}%`;
+    if (!result.isPlain) bar.style.opacity = '0.7';
+    if (bars.length > 0) bar.style.marginTop = '4px';
+    bars.push(bar);
+  }
 
   const barTd = document.createElement('td');
-  const plainBar = document.createElement('div');
-  plainBar.className = 'bar plain';
-  plainBar.style.width = `${(plainMs / maxMs) * 100}%`;
-  const rawBar = document.createElement('div');
-  rawBar.className = 'bar';
-  rawBar.style.width = `${(rawSqliteMs / maxMs) * 100}%`;
-  rawBar.style.marginTop = '4px';
-  rawBar.style.opacity = '0.7';
-  const jpBar = document.createElement('div');
-  jpBar.className = 'bar';
-  jpBar.style.width = `${(jsonPlusMs / maxMs) * 100}%`;
-  jpBar.style.marginTop = '4px';
-  barTd.append(plainBar, rawBar, jpBar);
+  barTd.append(...bars);
+  cells.push(barTd);
 
-  tr.append(labelTd, plainTd, rawSqliteTd, jpTd, barTd);
+  tr.append(...cells);
   return tr;
 }
 
@@ -61,10 +65,9 @@ async function runBenchmark(cold) {
     table.style.display = '';
 
     const speedup = (plain.total / jsonPlus.total).toFixed(1);
-    const proxyOverhead = (jsonPlus.lookupMs / rawSqlite.lookupMs).toFixed(2);
-    statusEl.textContent = `${count.toLocaleString()} records, ${lookups} lookups. json-plus cache ${
+    statusEl.textContent = `${count.toLocaleString()} records, ${lookups} lookups. JSON Plus cache ${
       jsonPlus.cached ? 'hit' : 'rebuilt (' + jsonPlus.buildMs.toFixed(1) + 'ms)'
-    }. json-plus is ${speedup}x faster overall. Proxy adds ${proxyOverhead}x lookup overhead vs raw SQL.`;
+    }. JSON Plus is ${speedup}x faster than plain JSON parsing.`;
   } catch (err) {
     statusEl.textContent = `Error: ${err.message}`;
   } finally {
