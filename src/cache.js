@@ -192,7 +192,7 @@ export function updateFlatRow(db, meta, id, patch) {
       fieldDbi.putSync(patch[field], idx);
     }
   }
-  mainDbi.putSync(idx, { ...existing, ...patch });
+  mainDbi.putSync(idx, Object.assign(existing, patch));
   return true;
 }
 
