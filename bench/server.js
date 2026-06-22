@@ -140,7 +140,7 @@ function benchPlainJsonDelete(ids) {
 
 /** json-plus path: all updates batched in a single transaction against a scratch copy of the cache. */
 function benchJsonPlusWrite(ids) {
-  const dbPath = scratchPath('.jsonp');
+  const dbPath = scratchPath('.jsonm');
   fs.copyFileSync(DB_PATH, dbPath);
   try {
     const db = openCache(dbPath);
@@ -159,7 +159,7 @@ function benchJsonPlusWrite(ids) {
 
 /** json-plus path: all deletes batched in a single transaction against a scratch copy of the cache. */
 function benchJsonPlusDelete(ids) {
-  const dbPath = scratchPath('.jsonp');
+  const dbPath = scratchPath('.jsonm');
   fs.copyFileSync(DB_PATH, dbPath);
   try {
     const db = openCache(dbPath);

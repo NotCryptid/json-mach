@@ -2,7 +2,7 @@ import { openOrBuildCache, transaction } from './cache.js';
 import { wrapRoot, materialize, getRow } from './proxy.js';
 
 function resolveCachePath(jsonPath, options) {
-  return options.cachePath ?? `${jsonPath}.jsonp`;
+  return options.cachePath ?? `${jsonPath}.jsonm`;
 }
 
 // wrapRoot() is cheap on its own, but it does one real LMDB get for the root

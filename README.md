@@ -1,6 +1,6 @@
 # JSON Mach
 
-Revolutionaly technology which makes JSON up to 313 times faster (in lookups).
+Revolutionaly technology which makes JSON up to 350 times faster (in lookups).
 
 May or may not be powered by lmdb
 
@@ -131,8 +131,8 @@ transaction(db, () => {
 
 ```javascript
 const { data } = openWithStats('data.json', {
-  // Path where the cache database is stored. Defaults to "${jsonPath}.jsonp"
-  cachePath: 'path/to/custom.jsonp',
+  // Path where the cache database is stored. Defaults to "${jsonPath}.jsonm"
+  cachePath: 'path/to/custom.jsonm',
 
   // Specify which fields to build secondary indexes for on flat arrays.
   // Defaults to ['id']
