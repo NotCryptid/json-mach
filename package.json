@@ -2,21 +2,38 @@
   "name": "json-mach",
   "version": "1.2.0",
   "description": "Makes JSON a hell of a lot faster.",
+  "keywords": [
+    "json",
+    "fast",
+    "database"
+  ],
+  "homepage": "https://github.com/NotCryptid/json-mach#readme",
+  "bugs": {
+    "url": "https://github.com/NotCryptid/json-mach/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NotCryptid/json-mach.git"
+  },
+  "license": "MIT",
+  "author": "Cryptid",
   "type": "module",
   "main": "src/index.js",
+  "directories": {
+    "test": "tests"
+  },
   "files": [
     "src"
   ],
-  "engines": {
-    "node": ">=22.5.0"
-  },
   "scripts": {
     "generate": "node scripts/generate-data.js",
     "bench": "node bench/server.js",
     "test": "node --test"
   },
-  "license": "MIT",
   "dependencies": {
     "lmdb": "^3.5.6"
+  },
+  "engines": {
+    "node": ">=22.5.0"
   }
 }
