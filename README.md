@@ -88,7 +88,11 @@ const carol = data.users.find(u => u.name === 'Carol');
 
 ## Writing & Modifying Data
 
-Any changes made to the proxy are synchronized to the LMDB cache in real-time.
+Any changes made to the proxy are synchronized to the LMDB cache in real-time. Once writes go
+idle for `flushIdleMs` (default `1000`ms), the cache's full tree is automatically mirrored back
+to the original JSON file as well, so the source file stays up to date without paying a
+disk-write cost on every single mutation. Set `autoFlush: false` to disable this and manage
+writes back to the source file yourself via `flush(db)`.
 
 ```javascript
 // Add or update object keys
@@ -140,7 +144,15 @@ const { data } = openWithStats('data.json', {
 
   // Opens the LMDB environment in read-only mode, bypassing the write-lock.
   // Set to true to maximize read performance.
-  readOnly: false
+  readOnly: false,
+
+  // Whether writes should be mirrored back to the source JSON file once the
+  // writer goes idle. Defaults to true.
+  autoFlush: true,
+
+  // How long (ms) to wait with no further writes before mirroring back to
+  // the source JSON file. Defaults to 1000.
+  flushIdleMs: 1000
 });
 ```
 

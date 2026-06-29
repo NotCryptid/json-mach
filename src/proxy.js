@@ -12,28 +12,8 @@ import {
   getFlatRowAt,
   whereFlatRows,
   findFlatRow,
+  materialize,
 } from './cache.js';
-
-function materialize(db, path, node) {
-  const record = node ?? getNode(db, path);
-  if (!record) return undefined;
-  switch (record.kind) {
-    case 'object': {
-      const obj = {};
-      for (const child of getChildren(db, path, record)) obj[child.key] = materialize(db, child.path);
-      return obj;
-    }
-    case 'array': {
-      const out = [];
-      for (const child of getChildren(db, path, record)) out.push(materialize(db, child.path));
-      return out;
-    }
-    case 'flatarray':
-      return [...iterateFlatTable(db, record.meta)];
-    default:
-      return record.value;
-  }
-}
 
 function wrapValue(db, path, node) {
   if (!node) return undefined;

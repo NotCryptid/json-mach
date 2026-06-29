@@ -73,6 +73,29 @@ export function getNode(db, path) {
   return db.nodes.get(path);
 }
 
+/** Recursively reconstructs a plain JS value from the cache at `path`. Lives here (rather
+ * than proxy.js) so flushToSource() can reuse it without a circular import. */
+export function materialize(db, path, node) {
+  const record = node ?? getNode(db, path);
+  if (!record) return undefined;
+  switch (record.kind) {
+    case 'object': {
+      const obj = {};
+      for (const child of getChildren(db, path, record)) obj[child.key] = materialize(db, child.path);
+      return obj;
+    }
+    case 'array': {
+      const out = [];
+      for (const child of getChildren(db, path, record)) out.push(materialize(db, child.path));
+      return out;
+    }
+    case 'flatarray':
+      return [...iterateFlatTable(db, record.meta)];
+    default:
+      return record.value;
+  }
+}
+
 function setNode(db, path, record) {
   db.nodes.putSync(path, record);
 }
@@ -164,6 +187,7 @@ export function writeChild(db, parentPath, key, value) {
   if (parentNode?.kind === 'object' && !parentNode.keys.includes(key)) {
     setNode(db, parentPath, { ...parentNode, keys: [...parentNode.keys, key] });
   }
+  scheduleFlush(db);
 }
 
 /** Deletes (parentPath, key) entirely, including removing it from the parent's key list. */
@@ -173,6 +197,7 @@ export function deleteChild(db, parentPath, key) {
   if (parentNode?.kind === 'object') {
     setNode(db, parentPath, { ...parentNode, keys: parentNode.keys.filter((k) => k !== key) });
   }
+  scheduleFlush(db);
 }
 
 /** Updates the given fields on the flat-table row matching `id`. Returns whether a row was found. */
@@ -194,6 +219,7 @@ export function updateFlatRow(db, meta, id, patch) {
     }
   }
   mainDbi.putSync(idx, Object.assign(existing, patch));
+  scheduleFlush(db);
   return true;
 }
 
@@ -213,6 +239,7 @@ export function deleteFlatRow(db, meta, id) {
   if (otherFields.length === 0) {
     mainDbi.removeSync(idx);
     idDbi.removeSync(id);
+    scheduleFlush(db);
     return true;
   }
 
@@ -227,6 +254,7 @@ export function deleteFlatRow(db, meta, id) {
       removeIndexEntry(fieldDbi, field, existing[field], idx);
     }
   }
+  scheduleFlush(db);
   return true;
 }
 
@@ -298,6 +326,81 @@ function openEnv(dbPath, options = {}) {
   return { root, meta, nodes, tables: new Map() };
 }
 
+// Defaults for mirroring writes back to the source JSON file: an env stays
+// "dirty" from its first untracked write until `flushIdleMs` passes with no
+// further writes (i.e. the writer goes idle/not-busy), at which point the
+// whole tree is re-materialized and written back. This amortizes the cost of
+// the mirror write across bursts of writes instead of paying it per-call.
+const DEFAULT_AUTO_FLUSH = true;
+const DEFAULT_FLUSH_IDLE_MS = 1000;
+
+/** Attaches source-mirroring state to a freshly opened env. A no-op target (no jsonPath)
+ * just disables mirroring, which is what direct openCache() callers get. */
+function attachFlushState(db, dbPath, jsonPath, options = {}) {
+  db.dbPath = dbPath;
+  db.jsonPath = jsonPath;
+  db.dirty = false;
+  db.flushTimer = null;
+  db.readOnly = Boolean(options.readOnly);
+  db.autoFlush = options.autoFlush ?? DEFAULT_AUTO_FLUSH;
+  db.flushIdleMs = options.flushIdleMs ?? DEFAULT_FLUSH_IDLE_MS;
+  return db;
+}
+
+/** Marks `db` dirty and (re)starts its idle timer; called by every mutating cache op.
+ * Each call pushes the flush out by `flushIdleMs`, so a burst of writes only flushes once,
+ * after the writer has actually gone idle. */
+function scheduleFlush(db) {
+  db.dirty = true;
+  if (!db.jsonPath || db.readOnly || !db.autoFlush) return;
+
+  if (db.flushTimer) clearTimeout(db.flushTimer);
+  db.flushTimer = setTimeout(() => {
+    db.flushTimer = null;
+    try {
+      flushToSource(db);
+    } catch (err) {
+      console.error('[json-mach] failed to mirror cache back to source JSON:', err);
+    }
+  }, db.flushIdleMs);
+  // Don't let the pending flush keep the process alive on its own.
+  db.flushTimer.unref?.();
+}
+
+/** Updates any envCache entries for `db.dbPath` that currently point at this exact env, so a
+ * flush's own filesystem write isn't mistaken for external drift on the next open. */
+function syncEnvCacheStat(db, stat) {
+  for (const readOnly of [false, true]) {
+    const entry = envCache.get(envCacheKey(db.dbPath, readOnly));
+    if (entry && entry.db === db) {
+      entry.size = stat.size;
+      entry.mtimeMs = stat.mtimeMs;
+    }
+  }
+}
+
+/** Re-materializes the cache's current tree and atomically rewrites the source JSON file
+ * with it, then re-syncs the cache's recorded size/mtime so this write doesn't trigger a
+ * needless rebuild on the next open. Exported so callers can force a flush (e.g. on
+ * shutdown) instead of waiting out the idle window; closeCache() already does this for
+ * pending writes. */
+export function flushToSource(db) {
+  if (!db.dirty || !db.jsonPath) return;
+
+  const data = materialize(db, ROOT_PATH);
+  const tmpPath = `${db.jsonPath}.tmp-${process.pid}-${Date.now().toString(36)}`;
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2));
+  fs.renameSync(tmpPath, db.jsonPath);
+
+  const stat = fs.statSync(db.jsonPath);
+  db.root.transactionSync(() => {
+    db.meta.putSync('source_size', stat.size);
+    db.meta.putSync('source_mtime_ms', stat.mtimeMs);
+  });
+  db.dirty = false;
+  syncEnvCacheStat(db, stat);
+}
+
 /** Builds (or rebuilds) the LMDB cache for a JSON file. This is the "expensive" step. */
 export function buildCache(jsonPath, dbPath, options = {}) {
   const opts = {
@@ -331,10 +434,21 @@ function isEnvValid(db, stat) {
 }
 
 export function openCache(dbPath) {
-  return openEnv(dbPath);
+  return attachFlushState(openEnv(dbPath), dbPath, undefined);
 }
 
 export function closeCache(db) {
+  if (db.flushTimer) {
+    clearTimeout(db.flushTimer);
+    db.flushTimer = null;
+  }
+  if (db.dirty) {
+    try {
+      flushToSource(db);
+    } catch (err) {
+      console.error('[json-mach] failed to mirror cache back to source JSON:', err);
+    }
+  }
   db.root.close();
 }
 
@@ -355,6 +469,17 @@ function evictEnvCacheEntry(dbPath) {
     const key = `${dbPath} ${mode}`;
     const entry = envCache.get(key);
     if (entry) {
+      if (entry.db.flushTimer) {
+        clearTimeout(entry.db.flushTimer);
+        entry.db.flushTimer = null;
+      }
+      if (entry.db.dirty) {
+        try {
+          flushToSource(entry.db);
+        } catch (err) {
+          console.error('[json-mach] failed to mirror cache back to source JSON:', err);
+        }
+      }
       entry.db.root.close();
       envCache.delete(key);
     }
@@ -406,6 +531,7 @@ export function openOrBuildCache(jsonPath, dbPath, options = {}) {
     buildMs = performance.now() - t0;
     db = openEnv(dbPath, envOpts);
   }
+  attachFlushState(db, dbPath, jsonPath, options);
 
   envCache.set(key, { db, size: stat.size, mtimeMs: stat.mtimeMs });
   return { db, cached, buildMs };

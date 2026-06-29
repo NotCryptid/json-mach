@@ -1,4 +1,4 @@
-import { openOrBuildCache, transaction } from './cache.js';
+import { openOrBuildCache, transaction, flushToSource } from './cache.js';
 import { wrapRoot, materialize, getRow } from './proxy.js';
 
 function resolveCachePath(jsonPath, options) {
@@ -49,5 +49,11 @@ export function open(jsonPath, options = {}) {
  * change; the env is torn down automatically once the source file changes.
  */
 export function close() {}
+
+/** Forces any pending writes to mirror back to the source JSON file immediately, instead of
+ * waiting out the idle window. No-op if there's nothing dirty. */
+export function flush(db) {
+  flushToSource(db);
+}
 
 export { materialize, getRow, transaction };
